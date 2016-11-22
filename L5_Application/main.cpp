@@ -40,6 +40,57 @@
  *        In either case, you should avoid using this bus or interfacing to external components because
  *        there is no semaphore configured for this bus and it should be used exclusively by nordic wireless.
  */
+QueueHandle_t my_queue = xQueueCreate(1, sizeof(int));
+class bluetooth_task : public scheduler_task {
+public:
+	bluetooth_task(uint8_t priority):scheduler_task("bluetooth", 2000, priority) {}
+
+	bool run(void *p)
+	{
+		return true;
+	}
+
+	bool init(int baud = 9600)
+	{
+		LPC_SC -> PCONP |= (1 << 24); //sets UART2 power/clock control bit
+		LPC_SC -> PCLKSEL1 &= ~(1 << 17); //PCLK divider = 01 {17,16}
+		LPC_SC -> PCLKSEL1 |= (1 << 16); //PCLK divider = 01 {17,16}
+
+		LPC_PINCON -> PINSEL4 &= ~(3 << 16); //Clear P2.8
+		LPC_PINCON -> PINSEL4 |= (2 << 16); //Initialize P2.8
+		LPC_PINCON -> PINSEL4 &= ~(3 << 18); //Clear P2.9
+		LPC_PINCON -> PINSEL4 |= (2 << 18); //Initialize P2.9
+
+		LPC_UART2 -> LCR |= (3); //8-bit length
+		LPC_UART2 -> LCR |= (1 << 7); //DLAB1 = 1
+		uint16_t div = (48 * 1000 * 1000)/(16 * baud);
+		LPC_UART2 -> DLM = (div >> 8);
+		LPC_UART2 -> DLL = (div >> 0);
+		LPC_UART2 -> LCR &= ~(1 << 7); //DLAB1 = 0
+	}
+
+	void u2_send (char out)
+	{
+		LPC_UART2 -> THR = out;
+//		printf("sent char = %c \n\n", out);
+		while (1) {
+			if (LPC_UART2 -> LSR & (1 << 5)) {
+				break;
+			}
+		}
+	}
+
+	char u2_receive (void)
+	{
+		while (1) {
+			if (LPC_UART2 -> LSR & (1 << 0)) {
+				break;
+			}
+		}
+		char in = LPC_UART2 -> RBR;
+		return in;
+	}
+};
 int main(void)
 {
     /**
