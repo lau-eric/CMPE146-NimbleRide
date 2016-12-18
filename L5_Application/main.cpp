@@ -1,5 +1,5 @@
 /*
- *     SocialLedge.com - Copyright (C) 2013
+ *     SocialLedge.com - Copyright (C) 201
  *
  *     This file is part of free software framework for embedded processors.
  *     You can use it and/or distribute it as long as this copyright header
@@ -25,6 +25,7 @@
  */
 #include "tasks.hpp"
 #include "examples/examples.hpp"
+#include "wireless.h"
 
 /**
  * The main() creates tasks or "threads".  See the documentation of scheduler_task class at scheduler_task.hpp
@@ -40,6 +41,56 @@
  *        In either case, you should avoid using this bus or interfacing to external components because
  *        there is no semaphore configured for this bus and it should be used exclusively by nordic wireless.
  */
+
+void nordic_receiver(void) {
+	char ir_addr = 100;
+	char bt_addr = 200;
+	mesh_set_node_address(bt_addr);
+
+	while(1) {
+		mesh_packet_t pkt;
+		int var1 = 0;
+		float var2 = 0;
+
+		if(wireless_get_rx_pkt(&pkt, 100)) {
+			wireless_deform_pkt(&pkt, 2,
+								&var1, sizeof(var1),
+								&var2, sizeof(var2));
+		}
+		printf("receiver: \n");
+		printf("var1: %i\n", var1);
+		printf("var2: %f\n", var2);
+	}
+}
+void nordic_sender(void) {
+	char hops = 0;
+	char ir_addr = 100;
+	char bt_addr = 200;
+	mesh_packet_t pkt;
+
+	mesh_set_node_address(ir_addr);
+
+	// sends a packet without ACK
+	wireless_send(bt_addr, mesh_pkt_nack, "HELLO", 5, hops);
+	//packet to addr, kind of packet, what to send, bytes to send, how many hops to get ot device
+	//writes to pkt.data[x] before sending
+
+//	wireless_send(addr, mesh_pkt_ack, "HELLO", 5, hops);
+//	/* We should wait for the ACK if it was requested.  ACK typically takes 10ms per hop */
+//	if (wireless_get_ack_pkt(&pkt, 25)) {
+//	}
+
+	/* Send a packet with two data variables */
+	    int var1 = 1234;
+	    float var2 = 98.76;
+	    mesh_form_pkt(&pkt, bt_addr, mesh_pkt_ack, hops,
+	                      2,                     /* 2 Pairs below */
+	                      &var1, sizeof(var1),   /* Pair 1 */
+	                      &var2, sizeof(var2));  /* Pair 2 */
+	    /* Packet was formed above, now send it */
+	    mesh_send_formed_pkt(&pkt);
+}
+
 QueueHandle_t my_queue = xQueueCreate(1, sizeof(int));
 class bluetooth_task : public scheduler_task {
 public:
@@ -67,6 +118,8 @@ public:
 		LPC_UART2 -> DLM = (div >> 8);
 		LPC_UART2 -> DLL = (div >> 0);
 		LPC_UART2 -> LCR &= ~(1 << 7); //DLAB1 = 0
+
+		return true;
 	}
 
 	void u2_send (char out)
@@ -103,7 +156,10 @@ int main(void)
      * such that it can save remote control codes to non-volatile memory.  IR remote
      * control codes can be learned by typing the "learn" terminal command.
      */
-    scheduler_add_task(new terminalTask(PRIORITY_HIGH));
+//    scheduler_add_task(new terminalTask(PRIORITY_HIGH));
+
+    nordic_sender();
+    nordic_receiver();
 
     /* Consumes very little CPU, but need highest priority to handle mesh network ACKs */
     scheduler_add_task(new wirelessTask(PRIORITY_CRITICAL));
