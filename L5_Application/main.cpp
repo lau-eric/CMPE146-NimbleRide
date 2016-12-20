@@ -127,59 +127,50 @@ public:
     }
 };
 
-QueueHandle_t my_queue = xQueueCreate(1, sizeof(int));
-class bluetooth_task : public scheduler_task {
-public:
-	bluetooth_task(uint8_t priority):scheduler_task("bluetooth", 2000, priority) {}
+void u2_init(int baud = 9600)
+{
+	LPC_SC -> PCONP |= (1 << 24); //sets UART2 power/clock control bit
+	LPC_SC -> PCLKSEL1 &= ~(1 << 17); //PCLK divider = 01 {17,16}
+	LPC_SC -> PCLKSEL1 |= (1 << 16); //PCLK divider = 01 {17,16}
 
-	bool run(void *p)
-	{
-		return true;
-	}
+	//TX
+	LPC_PINCON -> PINSEL4 &= ~(3 << 16); //Clear P2.8
+	LPC_PINCON -> PINSEL4 |= (2 << 16); //Initialize P2.8
+	//RX
+	LPC_PINCON -> PINSEL4 &= ~(3 << 18); //Clear P2.9
+	LPC_PINCON -> PINSEL4 |= (2 << 18); //Initialize P2.9
 
-	bool init(int baud = 9600)
-	{
-		LPC_SC -> PCONP |= (1 << 24); //sets UART2 power/clock control bit
-		LPC_SC -> PCLKSEL1 &= ~(1 << 17); //PCLK divider = 01 {17,16}
-		LPC_SC -> PCLKSEL1 |= (1 << 16); //PCLK divider = 01 {17,16}
+	LPC_UART2 -> LCR |= (3); //8-bit length
+	LPC_UART2 -> LCR |= (1 << 7); //DLAB1 = 1
+	uint16_t div = (48 * 1000 * 1000)/(16 * baud);
+	LPC_UART2 -> DLM = (div >> 8);
+	LPC_UART2 -> DLL = (div >> 0);
+	LPC_UART2 -> LCR &= ~(1 << 7); //DLAB1 = 0
 
-		LPC_PINCON -> PINSEL4 &= ~(3 << 16); //Clear P2.8
-		LPC_PINCON -> PINSEL4 |= (2 << 16); //Initialize P2.8
-		LPC_PINCON -> PINSEL4 &= ~(3 << 18); //Clear P2.9
-		LPC_PINCON -> PINSEL4 |= (2 << 18); //Initialize P2.9
+}
 
-		LPC_UART2 -> LCR |= (3); //8-bit length
-		LPC_UART2 -> LCR |= (1 << 7); //DLAB1 = 1
-		uint16_t div = (48 * 1000 * 1000)/(16 * baud);
-		LPC_UART2 -> DLM = (div >> 8);
-		LPC_UART2 -> DLL = (div >> 0);
-		LPC_UART2 -> LCR &= ~(1 << 7); //DLAB1 = 0
-
-		return true;
-	}
-
-	void u2_send (char out)
-	{
-		LPC_UART2 -> THR = out;
-//		printf("sent char = %c \n\n", out);
-		while (1) {
-			if (LPC_UART2 -> LSR & (1 << 5)) {
-				break;
-			}
+void u2_send (char out)
+{
+	LPC_UART2 -> THR = out;
+	//		printf("sent char = %c \n\n", out);
+	while (1) {
+		if (LPC_UART2 -> LSR & (1 << 5)) {
+			break;
 		}
 	}
+}
 
-	char u2_receive (void)
-	{
-		while (1) {
-			if (LPC_UART2 -> LSR & (1 << 0)) {
-				break;
-			}
+char u2_receive (void)
+{
+	while (1) {
+		if (LPC_UART2 -> LSR & (1 << 0)) {
+			break;
 		}
-		char in = LPC_UART2 -> RBR;
-		return in;
 	}
-};
+	char in = LPC_UART2 -> RBR;
+	return in;
+}
+
 int main(void)
 {
     /**
@@ -194,22 +185,7 @@ int main(void)
      */
 //    scheduler_add_task(new terminalTask(PRIORITY_HIGH));
 
-//	while (1) {
-//		nordic_sender();
-//	}
-
 	scheduler_add_task(new gpio_task(PRIORITY_HIGH));
-
-//	nordic_receiver();
-
-//	for (int i = 0; i < 500; i = i + 1){
-//		nordic_sender();
-//		LPC_GPIO1->FIOPIN &= ~(1 << 0);
-//		delay_ms(50);
-//		LPC_GPIO1->FIOPIN |= (1 << 0);
-//		delay_ms(50);
-//	}
-//    nordic_receiver();
 
     /* Consumes very little CPU, but need highest priority to handle mesh network ACKs */
     scheduler_add_task(new wirelessTask(PRIORITY_CRITICAL));
