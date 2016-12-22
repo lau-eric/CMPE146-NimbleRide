@@ -44,89 +44,6 @@
  *        there is no semaphore configured for this bus and it should be used exclusively by nordic wireless.
  */
 
-
-
-class gpio_task: public scheduler_task {
-public:
-    gpio_task(uint8_t priority) :
-        scheduler_task("GPIO", 2000, priority) {
-    }
-    bool run(void*p) {
-        if(LPC_GPIO2->FIOPIN & ( 1 << 0)){
-            LPC_GPIO1->FIOPIN &= ~(1 << 0); //SET
-            printf("No mail\n");
-            vTaskDelay(10);
-        }else{
-            LPC_GPIO1->FIOPIN |= (1 << 0); //RESET/CLEAR
-            printf("You have mail!!!.\n");
-            nordic_sender();
-            vTaskDelay(10);
-        }
-
-        return true;
-    }
-
-    bool init(void) {
-        //Switch
-        LPC_GPIO2->FIODIR &= ~( 1 << 0 );
-
-        //LED
-        LPC_GPIO1->FIODIR |= ( 1 << 0 ); //Direction
-        LPC_GPIO1->FIOPIN |= ( 1 << 0 ); //Selection
-
-        return true;
-    }
-    void nordic_receiver(void) {
-        char var1;
-        char var2;
-        char var3;
-        char var4;
-        char var5;
-        int count = 0;
-        while(1) {
-            mesh_packet_t pkt;
-            if(wireless_get_rx_pkt(&pkt, 100)) {
-                wireless_deform_pkt(&pkt, 5,
-                                    &var1, sizeof(var1),
-                                    &var2, sizeof(var2),
-                                    &var3, sizeof(var3),
-                                    &var4, sizeof(var4),
-                                    &var5, sizeof(var5));
-            printf("receiver: ");
-            printf("%c", var1);
-            printf("%c", var2);
-            printf("%c", var3);
-            printf("%c", var4);
-            printf("%c\n", var5);
-            printf("count: %i\n\n", count);
-            }
-//            count++;
-//            delay_ms(100);
-        }
-    }
-
-    void nordic_sender(void) {
-    	char hops = 0;
-    	char ir_addr = 100;
-    	char bt_addr = 200;
-    	mesh_packet_t pkt;
-
-    	char var1 = 'm';
-    	char var2 = 'a';
-    	char var3 = 'i';
-    	char var4 = 'l';
-    	char var5 = '!';
-    	wireless_form_pkt(&pkt, bt_addr, mesh_pkt_nack, hops,
-    			5,
-    			&var1, sizeof(var1),
-    			&var2, sizeof(var2),
-    			&var3, sizeof(var3),
-    			&var4, sizeof(var4),
-    			&var5, sizeof(var5));
-    	wireless_send_formed_pkt(&pkt);
-    }
-};
-
 void u2_init(int baud = 9600)
 {
 	LPC_SC -> PCONP |= (1 << 24); //sets UART2 power/clock control bit
@@ -171,6 +88,100 @@ char u2_receive (void)
 	return in;
 }
 
+class gpio_task: public scheduler_task {
+public:
+    gpio_task(uint8_t priority) :
+        scheduler_task("GPIO", 2000, priority) {
+    }
+    bool run(void*p) {
+        if(LPC_GPIO2->FIOPIN & ( 1 << 0)){
+            LPC_GPIO1->FIOPIN &= ~(1 << 0); //SET
+//            printf("No mail\n");
+            vTaskDelay(1000);
+        }else{
+            LPC_GPIO1->FIOPIN |= (1 << 0); //RESET/CLEAR
+            printf("You have mail!!!.\n");
+            nordic_sender();
+            vTaskDelay(1000);
+        }
+
+        return true;
+    }
+
+    bool init(void) {
+        //Switch
+        LPC_GPIO2->FIODIR &= ~( 1 << 0 );
+
+        //LED
+        LPC_GPIO1->FIODIR |= ( 1 << 0 ); //Direction
+        LPC_GPIO1->FIOPIN |= ( 1 << 0 ); //Selection
+
+        return true;
+    }
+    bool nordic_receiver(void) {
+        char var1;
+        char var2;
+        char var3;
+        char var4;
+        char var5;
+        int count = 0;
+        while(1) {
+            mesh_packet_t pkt;
+            if(wireless_get_rx_pkt(&pkt, 100)) {
+                wireless_deform_pkt(&pkt, 5,
+                                    &var1, sizeof(var1),
+                                    &var2, sizeof(var2),
+                                    &var3, sizeof(var3),
+                                    &var4, sizeof(var4),
+                                    &var5, sizeof(var5));
+            printf("receiver: "); //Used for debugging
+            printf("%c", var1); //Used for debugging
+            printf("%c", var2); //Used for debugging
+            printf("%c", var3); //Used for debugging
+            printf("%c", var4); //Used for debugging
+            printf("%c\n", var5); //Used for debugging
+
+            //Send to phone that is connected to the device.
+            u2_send(var1);
+            u2_send(var2);
+            u2_send(var3);
+            u2_send(var4);
+            u2_send(var5);
+            //printf("count: %i\n\n", count); //used for debugging.
+            return true;
+            }
+            //count++; //used for debugging
+            delay_ms(100);
+            return false;
+        }
+    }
+
+    void nordic_sender(void) {
+    	char hops = 0;
+    	char ir_addr = 100;
+    	char bt_addr = 200;
+    	mesh_packet_t pkt;
+
+    	char var1 = 'm';
+    	char var2 = 'a';
+    	char var3 = 'i';
+    	char var4 = 'l';
+    	char var5 = '!';
+    	wireless_form_pkt(&pkt, bt_addr, mesh_pkt_nack, hops,
+    			5,
+    			&var1, sizeof(var1),
+    			&var2, sizeof(var2),
+    			&var3, sizeof(var3),
+    			&var4, sizeof(var4),
+    			&var5, sizeof(var5));
+    	wireless_send_formed_pkt(&pkt);
+    	printf("Sent %c%c%c%c%c\n",var1,var2,var3,var4,var5);
+    	delay_ms(500);
+    }
+};
+
+
+
 int main(void)
 {
     /**
@@ -183,9 +194,17 @@ int main(void)
      * such that it can save remote control codes to non-volatile memory.  IR remote
      * control codes can be learned by typing the "learn" terminal command.
      */
-//    scheduler_add_task(new terminalTask(PRIORITY_HIGH));
 
+	//sending mail status over nordic wireless
 	scheduler_add_task(new gpio_task(PRIORITY_HIGH));
+
+	//for receiver to send through bluetooth
+//	u2_init();
+//	while(1){
+//		if(nordic_receiver()){
+//			printf("sent to phone.\n\n"); //Used to make sure phone receives signal from UART/Bluetooth.
+//		}
+//	}
 
     /* Consumes very little CPU, but need highest priority to handle mesh network ACKs */
     scheduler_add_task(new wirelessTask(PRIORITY_CRITICAL));
